@@ -6,7 +6,7 @@ from db import engine, Base, get_db
 import models
 from schemas import ScanInput, ScanResult
 from rules import run_rule_engine
-
+from datetime import datetime, timedelta
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -122,4 +122,106 @@ def list_scans(
         "page": page,
         "page_size": page_size,
         "scans": results,
+    }
+
+@app.get("/dashboard/stats")
+def dashboard_stats(db: Session = Depends(get_db)):
+    all_scans = db.query(models.Scan).all()
+
+    total_scans = len(all_scans)
+
+    if total_scans == 0:
+        return {
+            "total_scans": 0,
+            "compliant_pct": 0,
+            "top_violation": None,
+            "violations_this_week": 0,
+        }
+
+    # Compliant % — average compliance_pct across all scans
+    compliance_values = [s.compliance_pct for s in all_scans if s.compliance_pct is not None]
+    compliant_pct = round(sum(compliance_values) / len(compliance_values), 1) if compliance_values else 0
+
+    # Top violation — most frequently failing field label across all scans
+    field_fail_counts = {}
+    for scan in all_scans:
+        if not scan.rule_results:
+            continue
+        for field_result in scan.rule_results:
+            if field_result.get("status") == "fail":
+                label = field_result.get("label", field_result.get("field"))
+                field_fail_counts[label] = field_fail_counts.get(label, 0) + 1
+
+    top_violation = None
+    if field_fail_counts:
+        top_violation = max(field_fail_counts, key=field_fail_counts.get)
+
+    # Violations this week — non-compliant scans in the last 7 days
+    one_week_ago = datetime.utcnow() - timedelta(days=7)
+    violations_this_week = sum(
+        1 for s in all_scans
+        if s.timestamp and s.timestamp >= one_week_ago and s.overall_status == "non-compliant"
+    )
+
+    return {
+        "total_scans": total_scans,
+        "compliant_pct": compliant_pct,
+        "top_violation": top_violation,
+        "violations_this_week": violations_this_week,
+    }
+
+@app.get("/analytics")
+def analytics(db: Session = Depends(get_db)):
+    all_scans = db.query(models.Scan).all()
+
+    # ---- 1. Compliance over time (last 7 days) ----
+    today = datetime.utcnow().date()
+    daily_compliance = {}
+    for i in range(6, -1, -1):
+        day = today - timedelta(days=i)
+        daily_compliance[day.isoformat()] = []
+
+    for scan in all_scans:
+        if not scan.timestamp or scan.compliance_pct is None:
+            continue
+        scan_day = scan.timestamp.date()
+        key = scan_day.isoformat()
+        if key in daily_compliance:
+            daily_compliance[key].append(scan.compliance_pct)
+
+    compliance_over_time = []
+    for day, values in daily_compliance.items():
+        avg = round(sum(values) / len(values), 1) if values else 0
+        compliance_over_time.append({"date": day, "compliance_pct": avg})
+
+    # ---- 2. Violation breakdown by field ----
+    field_fail_counts = {}
+    for scan in all_scans:
+        if not scan.rule_results:
+            continue
+        for field_result in scan.rule_results:
+            if field_result.get("status") == "fail":
+                label = field_result.get("label", field_result.get("field"))
+                field_fail_counts[label] = field_fail_counts.get(label, 0) + 1
+
+    violation_breakdown = [
+        {"field": label, "count": count}
+        for label, count in sorted(field_fail_counts.items(), key=lambda x: -x[1])
+    ]
+
+    # ---- 3. Scans by category ----
+    category_counts = {}
+    for scan in all_scans:
+        cat = scan.category or "Uncategorized"
+        category_counts[cat] = category_counts.get(cat, 0) + 1
+
+    scans_by_category = [
+        {"category": cat, "count": count}
+        for cat, count in category_counts.items()
+    ]
+
+    return {
+        "compliance_over_time": compliance_over_time,
+        "violation_breakdown": violation_breakdown,
+        "scans_by_category": scans_by_category,
     }
