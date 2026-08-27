@@ -1,5 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from typing import Optional
 from db import engine, Base, get_db
 import models
 from schemas import ScanInput, ScanResult
@@ -9,9 +11,11 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+
 @app.get("/")
 def read_root():
     return {"status": "backend is running"}
+
 
 @app.get("/test-db")
 def test_db():
@@ -20,6 +24,7 @@ def test_db():
             return {"database": "connected successfully"}
     except Exception as e:
         return {"database": "connection failed", "error": str(e)}
+
 
 @app.post("/test-rules")
 def test_rules(scan_input: ScanInput):
@@ -73,4 +78,48 @@ def get_scan(scan_id: str, db: Session = Depends(get_db)):
         "fields_passed": passed,
         "fields_total": total,
         "field_results": scan.rule_results,
+    }
+
+
+@app.get("/scans")
+def list_scans(
+    status: Optional[str] = Query(None, description="compliant, non-compliant, or exempt"),
+    search: Optional[str] = Query(None, description="search by product name"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Scan)
+
+    if status:
+        query = query.filter(models.Scan.overall_status == status)
+
+    if search:
+        query = query.filter(models.Scan.product_name.ilike(f"%{search}%"))
+
+    total = query.count()
+
+    scans = (
+        query.order_by(models.Scan.timestamp.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    results = []
+    for scan in scans:
+        results.append({
+            "scan_id": scan.scan_id,
+            "product_name": scan.product_name,
+            "category": scan.category,
+            "timestamp": scan.timestamp,
+            "overall_status": scan.overall_status,
+            "compliance_pct": scan.compliance_pct,
+        })
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "scans": results,
     }
