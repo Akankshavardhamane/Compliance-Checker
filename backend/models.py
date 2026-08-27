@@ -11,6 +11,7 @@ class Scan(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     image_ref = Column(String, nullable=True)
     product_name = Column(String, nullable=True)
+    category = Column(String, nullable=True)
     extracted_fields = Column(JSON, nullable=True)
     rule_results = Column(JSON, nullable=True)
     overall_status = Column(String, nullable=True)
