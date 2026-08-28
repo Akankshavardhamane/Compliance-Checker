@@ -14,108 +14,137 @@ export interface ScanResult {
   fields: ComplianceField[];
 }
 
-const mockScanResult: ScanResult = {
-  scan_id: "scan_001",
-  product_image_url: "/mock/product1.jpg",
-  product_name: "Sample Biscuit Pack",
-  scanned_at: "2026-08-27T10:30:00Z",
-  overall_compliance_percent: 80,
-  fields: [
-    {
-      field_name: "MRP",
-      detected_value: "₹45.00 incl. of all taxes",
-      status: "pass",
-      reason: null,
-    },
-    {
-      field_name: "Net Quantity",
-      detected_value: "100g",
-      status: "pass",
-      reason: null,
-    },
-    {
-      field_name: "Manufacturing Date",
-      detected_value: null,
-      status: "fail",
-      reason: "Manufacturing date not detected on label",
-    },
-    {
-      field_name: "Manufacturer Address",
-      detected_value: "XYZ Foods Pvt Ltd, Bangalore - 560001",
-      status: "pass",
-      reason: null,
-    },
-    {
-      field_name: "Consumer Care",
-      detected_value: "1800-XXX-XXXX",
-      status: "fail",
-      reason: "Font size below minimum readability requirement",
-    },
-  ],
-};
+const BACKEND_URL = "http://127.0.0.1:8000";
 
+// --------------------------------------------------
+// Upload image -> Backend -> OCR -> Rule Engine -> DB
+// --------------------------------------------------
 export async function uploadLabel(file: File): Promise<ScanResult> {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  return mockScanResult;
-}
+  const formData = new FormData();
 
-export async function getScanResult(scanId: string): Promise<ScanResult> {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return mockScanResult;
-}
+  formData.append("image", file);
 
-export async function getDashboardStats() {
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  const response = await fetch(`${BACKEND_URL}/scan-with-image`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      `Scan failed (${response.status}): ${errorText}`
+    );
+  }
+
+  const data = await response.json();
+
+  console.log("REAL BACKEND SCAN RESPONSE:", data);
+
+  if (!data.scan_id) {
+    throw new Error("Backend did not return a scan_id.");
+  }
+
   return {
-    totalScans: 124,
-    compliantPercent: 80,
-    mostCommonViolation: "Manufacturing date not detected",
-    violationsThisWeek: 15,
+    scan_id: data.scan_id,
+    product_image_url: data.image_ref
+      ? `${BACKEND_URL}/${data.image_ref}`
+      : "",
+    product_name: data.product_name ?? "Uploaded Product",
+    scanned_at: data.timestamp ?? new Date().toISOString(),
+    overall_compliance_percent: Number(data.compliance_pct ?? 0),
+
+    fields: (data.field_results ?? []).map((field: any) => ({
+      field_name: field.label ?? field.field ?? "Unknown Field",
+      detected_value: field.detected_value ?? null,
+      status:
+        field.status === "pass"
+          ? "pass"
+          : field.status === "fail"
+          ? "fail"
+          : "not_detected",
+      reason: field.reason ?? null,
+    })),
   };
 }
 
-export async function getRecentScans() {
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return [
-    mockScanResult,
+// --------------------------------------------------
+// Get one real scan from backend
+// --------------------------------------------------
+export async function getScanResult(
+  scanId: string
+): Promise<ScanResult> {
+  if (!scanId || scanId === "undefined") {
+    throw new Error("Invalid scan ID.");
+  }
+
+  const response = await fetch(
+    `${BACKEND_URL}/scan/${scanId}`,
     {
-      ...mockScanResult,
-      scan_id: "scan_002",
-      product_name: "Premium Chips",
-      overall_compliance_percent: 100,
-      scanned_at: "2026-08-26T14:20:00Z",
-      fields: mockScanResult.fields.map((f) => ({ ...f, status: "pass", reason: null })),
-    },
-  ];
+      method: "GET",
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      `Could not fetch scan (${response.status}): ${errorText}`
+    );
+  }
+
+  const data = await response.json();
+
+  return {
+    scan_id: data.scan_id,
+    product_image_url: data.image_ref
+      ? `${BACKEND_URL}/${data.image_ref}`
+      : "",
+    product_name: data.product_name ?? "Uploaded Product",
+    scanned_at: data.timestamp ?? new Date().toISOString(),
+    overall_compliance_percent: Number(data.compliance_pct ?? 0),
+
+    fields: (data.field_results ?? []).map((field: any) => ({
+      field_name: field.label ?? field.field ?? "Unknown Field",
+      detected_value: field.detected_value ?? null,
+      status:
+        field.status === "pass"
+          ? "pass"
+          : field.status === "fail"
+          ? "fail"
+          : "not_detected",
+      reason: field.reason ?? null,
+    })),
+  };
 }
 
-export async function getAnalyticsData() {
-  await new Promise((resolve) => setTimeout(resolve, 600));
+// --------------------------------------------------
+// Dashboard - still mock for now
+// --------------------------------------------------
+export async function getDashboardStats() {
   return {
-    complianceOverTime: [
-      { date: 'Aug 21', rate: 75 },
-      { date: 'Aug 22', rate: 78 },
-      { date: 'Aug 23', rate: 82 },
-      { date: 'Aug 24', rate: 79 },
-      { date: 'Aug 25', rate: 85 },
-      { date: 'Aug 26', rate: 88 },
-      { date: 'Aug 27', rate: 91 },
-    ],
-    violationsBreakdown: [
-      { name: 'Manufacturing Date', value: 40 },
-      { name: 'Consumer Care', value: 30 },
-      { name: 'MRP Info', value: 15 },
-      { name: 'Net Quantity', value: 10 },
-      { name: 'Other', value: 5 },
-    ],
-    categoryScans: [
-      { category: 'Snacks', scans: 120 },
-      { category: 'Beverages', scans: 85 },
-      { category: 'Dairy', scans: 65 },
-      { category: 'Personal Care', scans: 45 },
-      { category: 'Groceries', scans: 30 },
-    ]
+    totalScans: 0,
+    compliantPercent: 0,
+    mostCommonViolation: "None",
+    violationsThisWeek: 0,
+  };
+}
+
+// --------------------------------------------------
+// Recent scans - still mock for now
+// --------------------------------------------------
+export async function getRecentScans() {
+  return [];
+}
+
+// --------------------------------------------------
+// Analytics - still mock for now
+// --------------------------------------------------
+export async function getAnalyticsData() {
+  return {
+    complianceOverTime: [],
+    violationsBreakdown: [],
+    categoryScans: [],
   };
 }

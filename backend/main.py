@@ -16,51 +16,113 @@ from schemas import ScanInput, ScanResult
 from rules import run_rule_engine
 from report_generator import generate_scan_pdf
 
-# ---- Wire in Person 1's OCR module (sibling folder, not inside backend/) ----
-OCR_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "OCR_module")
+
+# --------------------------------------------------
+# Person 1 OCR module
+# --------------------------------------------------
+
+OCR_MODULE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "OCR_module",
+)
+
 sys.path.insert(0, os.path.abspath(OCR_MODULE_DIR))
+
 from pipeline import process_label  # noqa: E402
+
+
+# --------------------------------------------------
+# Database
+# --------------------------------------------------
 
 Base.metadata.create_all(bind=engine)
 
+
+# --------------------------------------------------
+# FastAPI
+# --------------------------------------------------
+
 app = FastAPI()
+
+
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
 
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# --------------------------------------------------
+# Upload directory
+# --------------------------------------------------
 
+UPLOAD_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "uploads",
+)
+
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.mount(
+    "/uploads",
+    StaticFiles(directory=UPLOAD_DIR),
+    name="uploads",
+)
+
+
+# --------------------------------------------------
+# Health
+# --------------------------------------------------
 
 @app.get("/")
 def read_root():
     return {"status": "backend is running"}
 
 
+# --------------------------------------------------
+# Database test
+# --------------------------------------------------
+
 @app.get("/test-db")
 def test_db():
     try:
-        with engine.connect() as connection:
+        with engine.connect():
             return {"database": "connected successfully"}
     except Exception as e:
-        return {"database": "connection failed", "error": str(e)}
+        return {
+            "database": "connection failed",
+            "error": str(e),
+        }
 
+
+# --------------------------------------------------
+# Rule engine test
+# --------------------------------------------------
 
 @app.post("/test-rules")
 def test_rules(scan_input: ScanInput):
     return run_rule_engine(scan_input)
 
 
+# --------------------------------------------------
+# JSON scan endpoint
+# --------------------------------------------------
+
 @app.post("/scan", response_model=ScanResult)
-def create_scan(scan_input: ScanInput, db: Session = Depends(get_db)):
+def create_scan(
+    scan_input: ScanInput,
+    db: Session = Depends(get_db),
+):
     result = run_rule_engine(scan_input)
 
     new_scan = models.Scan(
@@ -72,6 +134,7 @@ def create_scan(scan_input: ScanInput, db: Session = Depends(get_db)):
         overall_status=result["overall_status"],
         compliance_pct=result["compliance_pct"],
     )
+
     db.add(new_scan)
     db.commit()
     db.refresh(new_scan)
@@ -79,35 +142,92 @@ def create_scan(scan_input: ScanInput, db: Session = Depends(get_db)):
     return {
         "scan_id": new_scan.scan_id,
         "product_name": new_scan.product_name,
+        "image_ref": new_scan.image_ref,
         "timestamp": new_scan.timestamp,
         "overall_status": result["overall_status"],
         "compliance_pct": result["compliance_pct"],
         "fields_passed": result["fields_passed"],
         "fields_total": result["fields_total"],
         "field_results": result["field_results"],
-        "violations": result["violations"],
-        "readability_notes": result["readability_notes"],
     }
 
 
-# ---- Fallback mock, used ONLY if real OCR throws an error (e.g. API down, network issue) ----
-# This exists purely as a demo-safety net so a live demo doesn't hard-crash if OCR.space
-# has an outage or rate-limits you mid-demo. It is NOT used when real OCR succeeds.
+# --------------------------------------------------
+# Fallback OCR data
+# --------------------------------------------------
+
 FALLBACK_MOCK_OCR = {
-    "mrp": {"detected": True, "value": "\u20b9199", "says_inclusive_of_taxes": True,
-            "text_height_pct": 3.1, "small_text_flag": False},
-    "net_quantity": {"detected": True, "value": "500g",
-                      "text_height_pct": 1.8, "small_text_flag": True},
-    "mfg_date": {"detected": True, "value": "07/2025",
-                 "text_height_pct": 2.0, "small_text_flag": False},
-    "consumer_care": {"detected": False, "value": None,
-                       "text_height_pct": None, "small_text_flag": None},
-    "manufacturer_address": {"detected": True, "value": "ABC Foods Pvt Ltd, Bengaluru 560001",
-                              "text_height_pct": 1.5, "small_text_flag": False},
-    "best_before_date": {"detected": False, "value": None, "applicable": True,
-                          "text_height_pct": None, "small_text_flag": None},
+    "mrp": {
+        "detected": True,
+        "value": "₹199",
+        "says_inclusive_of_taxes": True,
+        "text_height_pct": 3.1,
+        "small_text_flag": False,
+    },
+    "net_qty": {
+        "detected": True,
+        "value": "500g",
+        "text_height_pct": 1.8,
+        "small_text_flag": True,
+    },
+    "mfg_date": {
+        "detected": True,
+        "value": "07/2025",
+        "text_height_pct": 2.0,
+        "small_text_flag": False,
+    },
+    "consumer_care": {
+        "detected": False,
+        "value": None,
+        "text_height_pct": None,
+        "small_text_flag": None,
+    },
+    "address": {
+        "detected": True,
+        "value": "ABC Foods Pvt Ltd, Bengaluru 560001",
+        "text_height_pct": 1.5,
+        "small_text_flag": False,
+    },
+    "best_before_date": {
+        "detected": False,
+        "value": None,
+        "applicable": True,
+        "text_height_pct": None,
+        "small_text_flag": None,
+    },
 }
 
+
+# --------------------------------------------------
+# Normalize OCR output
+#
+# Your current OCR module appears to return:
+#   net_quantity
+#   manufacturer_address
+#
+# while ScanInput expects:
+#   net_qty
+#   address
+#
+# We normalize here so Person 1's code does not need
+# to be changed.
+# --------------------------------------------------
+
+def normalize_ocr_fields(extracted_fields: dict) -> dict:
+    fields = dict(extracted_fields)
+
+    if "net_qty" not in fields and "net_quantity" in fields:
+        fields["net_qty"] = fields.pop("net_quantity")
+
+    if "address" not in fields and "manufacturer_address" in fields:
+        fields["address"] = fields.pop("manufacturer_address")
+
+    return fields
+
+
+# --------------------------------------------------
+# Image scan endpoint
+# --------------------------------------------------
 
 @app.post("/scan-with-image")
 async def create_scan_with_image(
@@ -116,38 +236,91 @@ async def create_scan_with_image(
     category: str = Form(None),
     db: Session = Depends(get_db),
 ):
-    file_extension = image.filename.split(".")[-1]
-    unique_filename = f"{uuid_lib.uuid4()}.{file_extension}"
-    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    original_name = image.filename or "upload.jpg"
 
+    if "." in original_name:
+        file_extension = original_name.rsplit(".", 1)[-1].lower()
+    else:
+        file_extension = "jpg"
+
+    unique_filename = (
+        f"{uuid_lib.uuid4()}.{file_extension}"
+    )
+
+    file_path = os.path.join(
+        UPLOAD_DIR,
+        unique_filename,
+    )
+
+    # Save uploaded image
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
 
-    # ---- REAL OCR: calls Person 1's pipeline.process_label() ----
+    # --------------------------------------------------
+    # Run real OCR
+    # --------------------------------------------------
+
     ocr_used = "real"
+
     try:
         extracted_fields = process_label(file_path)
+
+        # Normalize the current OCR module's field names
+        extracted_fields = normalize_ocr_fields(
+            extracted_fields
+        )
+
     except Exception as e:
-        # Demo-safety fallback — real OCR failed (API down, bad key, network, etc.)
-        print(f"[OCR WARNING] process_label failed, using fallback mock data: {e}")
+        print(
+            "[OCR WARNING] process_label failed, "
+            f"using fallback mock data: {e}"
+        )
+
         extracted_fields = FALLBACK_MOCK_OCR
         ocr_used = "fallback_mock"
 
-    scan_input = ScanInput(product_name=product_name, category=category, **extracted_fields)
+    # Helpful debug output during integration testing
+    print("[OCR RESULT KEYS]:", list(extracted_fields.keys()))
+
+    # --------------------------------------------------
+    # Build ScanInput
+    # --------------------------------------------------
+
+    scan_input = ScanInput(
+        product_name=product_name,
+        category=category,
+        **extracted_fields,
+    )
+
+    # --------------------------------------------------
+    # Run rule engine
+    # --------------------------------------------------
+
     result = run_rule_engine(scan_input)
+
+    # --------------------------------------------------
+    # Save scan
+    # --------------------------------------------------
+
+    image_ref = f"uploads/{unique_filename}"
 
     new_scan = models.Scan(
         product_name=product_name,
         category=category,
-        image_ref=f"uploads/{unique_filename}",
+        image_ref=image_ref,
         extracted_fields=scan_input.dict(),
         rule_results=result["field_results"],
         overall_status=result["overall_status"],
         compliance_pct=result["compliance_pct"],
     )
+
     db.add(new_scan)
     db.commit()
     db.refresh(new_scan)
+
+    # --------------------------------------------------
+    # Return scan result
+    # --------------------------------------------------
 
     return {
         "scan_id": new_scan.scan_id,
@@ -165,105 +338,244 @@ async def create_scan_with_image(
     }
 
 
-@app.get("/scan/{scan_id}", response_model=ScanResult)
-def get_scan(scan_id: str, db: Session = Depends(get_db)):
-    scan = db.query(models.Scan).filter(models.Scan.scan_id == scan_id).first()
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found")
+# --------------------------------------------------
+# Get saved scan
+# --------------------------------------------------
 
-    result = run_rule_engine(scan.extracted_fields)
+@app.get(
+    "/scan/{scan_id}",
+    response_model=ScanResult,
+)
+def get_scan(
+    scan_id: str,
+    db: Session = Depends(get_db),
+):
+    scan = (
+        db.query(models.Scan)
+        .filter(models.Scan.scan_id == scan_id)
+        .first()
+    )
+
+    if not scan:
+        raise HTTPException(
+            status_code=404,
+            detail="Scan not found",
+        )
+
+    # Use the already stored rule results.
+    # Do NOT run the OCR again.
+    field_results = scan.rule_results or []
+
+    fields_total = len(field_results)
+
+    fields_passed = sum(
+        1
+        for field_result in field_results
+        if field_result.get("status") == "pass"
+    )
 
     return {
         "scan_id": scan.scan_id,
         "product_name": scan.product_name,
+        "image_ref": scan.image_ref,
         "timestamp": scan.timestamp,
         "overall_status": scan.overall_status,
         "compliance_pct": scan.compliance_pct,
-        "fields_passed": result["fields_passed"],
-        "fields_total": result["fields_total"],
-        "field_results": scan.rule_results,
-        "violations": result["violations"],
-        "readability_notes": result["readability_notes"],
+        "fields_passed": fields_passed,
+        "fields_total": fields_total,
+        "field_results": field_results,
     }
 
 
+# --------------------------------------------------
+# PDF report
+# --------------------------------------------------
+
 @app.get("/scan/{scan_id}/report.pdf")
-def download_scan_report(scan_id: str, db: Session = Depends(get_db)):
-    scan = db.query(models.Scan).filter(models.Scan.scan_id == scan_id).first()
+def download_scan_report(
+    scan_id: str,
+    db: Session = Depends(get_db),
+):
+    scan = (
+        db.query(models.Scan)
+        .filter(models.Scan.scan_id == scan_id)
+        .first()
+    )
+
     if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Scan not found",
+        )
 
-    result = run_rule_engine(scan.extracted_fields)
-    pdf_buffer = generate_scan_pdf(scan, result)
+    scan_input = ScanInput(
+        **scan.extracted_fields
+    )
 
-    filename = f"compliance_report_{scan.scan_id}.pdf"
+    result = run_rule_engine(scan_input)
+
+    pdf_buffer = generate_scan_pdf(
+        scan,
+        result,
+    )
+
+    filename = (
+        f"compliance_report_{scan.scan_id}.pdf"
+    )
+
     return StreamingResponse(
         pdf_buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={
+            "Content-Disposition":
+                f"attachment; filename={filename}"
+        },
     )
 
 
+# --------------------------------------------------
+# List scans
+# --------------------------------------------------
+
 @app.get("/scans")
 def list_scans(
-    status: Optional[str] = Query(None, description="compliant or non-compliant"),
-    search: Optional[str] = Query(None, description="search by product name"),
+    status: Optional[str] = Query(
+        None,
+        description="compliant or non-compliant",
+    ),
+    search: Optional[str] = Query(
+        None,
+        description="search by product name",
+    ),
     page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100),
+    page_size: int = Query(
+        10,
+        ge=1,
+        le=100,
+    ),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Scan)
+
     if status:
-        query = query.filter(models.Scan.overall_status == status)
+        query = query.filter(
+            models.Scan.overall_status == status
+        )
+
     if search:
-        query = query.filter(models.Scan.product_name.ilike(f"%{search}%"))
+        query = query.filter(
+            models.Scan.product_name.ilike(
+                f"%{search}%"
+            )
+        )
 
     total = query.count()
+
     scans = (
-        query.order_by(models.Scan.timestamp.desc())
+        query
+        .order_by(models.Scan.timestamp.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
 
-    results = [{
-        "scan_id": s.scan_id,
-        "product_name": s.product_name,
-        "category": s.category,
-        "timestamp": s.timestamp,
-        "overall_status": s.overall_status,
-        "compliance_pct": s.compliance_pct,
-    } for s in scans]
+    results = [
+        {
+            "scan_id": scan.scan_id,
+            "product_name": scan.product_name,
+            "category": scan.category,
+            "timestamp": scan.timestamp,
+            "overall_status": scan.overall_status,
+            "compliance_pct": scan.compliance_pct,
+        }
+        for scan in scans
+    ]
 
-    return {"total": total, "page": page, "page_size": page_size, "scans": results}
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "scans": results,
+    }
 
+
+# --------------------------------------------------
+# Dashboard stats
+# --------------------------------------------------
 
 @app.get("/dashboard/stats")
-def dashboard_stats(db: Session = Depends(get_db)):
+def dashboard_stats(
+    db: Session = Depends(get_db),
+):
     all_scans = db.query(models.Scan).all()
+
     total_scans = len(all_scans)
 
     if total_scans == 0:
-        return {"total_scans": 0, "compliant_pct": 0, "top_violation": None, "violations_this_week": 0}
+        return {
+            "total_scans": 0,
+            "compliant_pct": 0,
+            "top_violation": None,
+            "violations_this_week": 0,
+        }
 
-    compliance_values = [s.compliance_pct for s in all_scans if s.compliance_pct is not None]
-    compliant_pct = round(sum(compliance_values) / len(compliance_values), 1) if compliance_values else 0
+    compliance_values = [
+        scan.compliance_pct
+        for scan in all_scans
+        if scan.compliance_pct is not None
+    ]
+
+    compliant_pct = (
+        round(
+            sum(compliance_values)
+            / len(compliance_values),
+            1,
+        )
+        if compliance_values
+        else 0
+    )
 
     field_fail_counts = {}
+
     for scan in all_scans:
         if not scan.rule_results:
             continue
+
         for field_result in scan.rule_results:
             if field_result.get("status") == "fail":
-                label = field_result.get("label", field_result.get("field"))
-                field_fail_counts[label] = field_fail_counts.get(label, 0) + 1
+                label = field_result.get(
+                    "label",
+                    field_result.get("field"),
+                )
 
-    top_violation = max(field_fail_counts, key=field_fail_counts.get) if field_fail_counts else None
+                field_fail_counts[label] = (
+                    field_fail_counts.get(label, 0)
+                    + 1
+                )
 
-    one_week_ago = datetime.utcnow() - timedelta(days=7)
+    top_violation = (
+        max(
+            field_fail_counts,
+            key=field_fail_counts.get,
+        )
+        if field_fail_counts
+        else None
+    )
+
+    one_week_ago = (
+        datetime.utcnow()
+        - timedelta(days=7)
+    )
+
     violations_this_week = sum(
-        1 for s in all_scans
-        if s.timestamp and s.timestamp >= one_week_ago and s.overall_status == "non-compliant"
+        1
+        for scan in all_scans
+        if (
+            scan.timestamp
+            and scan.timestamp >= one_week_ago
+            and scan.overall_status
+            == "non-compliant"
+        )
     )
 
     return {
@@ -274,48 +586,110 @@ def dashboard_stats(db: Session = Depends(get_db)):
     }
 
 
+# --------------------------------------------------
+# Analytics
+# --------------------------------------------------
+
 @app.get("/analytics")
-def analytics(db: Session = Depends(get_db)):
+def analytics(
+    db: Session = Depends(get_db),
+):
     all_scans = db.query(models.Scan).all()
 
     today = datetime.utcnow().date()
-    daily_compliance = {(today - timedelta(days=i)).isoformat(): [] for i in range(6, -1, -1)}
+
+    daily_compliance = {
+        (today - timedelta(days=i)).isoformat(): []
+        for i in range(6, -1, -1)
+    }
 
     for scan in all_scans:
-        if not scan.timestamp or scan.compliance_pct is None:
+        if (
+            not scan.timestamp
+            or scan.compliance_pct is None
+        ):
             continue
+
         key = scan.timestamp.date().isoformat()
+
         if key in daily_compliance:
-            daily_compliance[key].append(scan.compliance_pct)
+            daily_compliance[key].append(
+                scan.compliance_pct
+            )
 
     compliance_over_time = [
-        {"date": day, "compliance_pct": round(sum(v) / len(v), 1) if v else 0}
-        for day, v in daily_compliance.items()
+        {
+            "date": day,
+            "compliance_pct": (
+                round(
+                    sum(values) / len(values),
+                    1,
+                )
+                if values
+                else 0
+            ),
+        }
+        for day, values
+        in daily_compliance.items()
     ]
 
     field_fail_counts = {}
+
     for scan in all_scans:
         if not scan.rule_results:
             continue
+
         for field_result in scan.rule_results:
             if field_result.get("status") == "fail":
-                label = field_result.get("label", field_result.get("field"))
-                field_fail_counts[label] = field_fail_counts.get(label, 0) + 1
+                label = field_result.get(
+                    "label",
+                    field_result.get("field"),
+                )
+
+                field_fail_counts[label] = (
+                    field_fail_counts.get(label, 0)
+                    + 1
+                )
 
     violation_breakdown = [
-        {"field": label, "count": count}
-        for label, count in sorted(field_fail_counts.items(), key=lambda x: -x[1])
+        {
+            "field": label,
+            "count": count,
+        }
+        for label, count
+        in sorted(
+            field_fail_counts.items(),
+            key=lambda x: -x[1],
+        )
     ]
 
     category_counts = {}
-    for scan in all_scans:
-        cat = scan.category or "Uncategorized"
-        category_counts[cat] = category_counts.get(cat, 0) + 1
 
-    scans_by_category = [{"category": cat, "count": count} for cat, count in category_counts.items()]
+    for scan in all_scans:
+        category = (
+            scan.category
+            or "Uncategorized"
+        )
+
+        category_counts[category] = (
+            category_counts.get(category, 0)
+            + 1
+        )
+
+    scans_by_category = [
+        {
+            "category": category,
+            "count": count,
+        }
+        for category, count
+        in category_counts.items()
+    ]
 
     return {
-        "compliance_over_time": compliance_over_time,
-        "violation_breakdown": violation_breakdown,
-        "scans_by_category": scans_by_category,
+        "compliance_over_time":
+            compliance_over_time,
+        "violation_breakdown":
+            violation_breakdown,
+        "scans_by_category":
+            scans_by_category,
     }
