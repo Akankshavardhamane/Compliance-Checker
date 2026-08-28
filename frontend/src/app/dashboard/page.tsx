@@ -13,8 +13,6 @@ import {
   Calendar,
   ChevronRight,
   Search,
-  Calendar as CalendarIcon,
-  Download,
   MoreHorizontal,
 } from "lucide-react";
 
@@ -213,7 +211,7 @@ export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 bg-[#F8FAFC] min-h-screen">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
+      <div className="mb-10">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-1">
             Dashboard
@@ -222,18 +220,6 @@ export default function DashboardPage() {
           <p className="text-slate-500 font-medium">
             Overview of all label compliance scans.
           </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg shadow-sm hover:bg-slate-50 hover:shadow-md transition-all">
-            <CalendarIcon className="h-4 w-4 text-slate-500" />
-            Last 30 Days
-          </button>
-
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg shadow-sm hover:bg-slate-50 hover:shadow-md transition-all">
-            <Download className="h-4 w-4 text-slate-500" />
-            Export CSV
-          </button>
         </div>
       </div>
 
