@@ -13,8 +13,6 @@ import {
   Calendar,
   ChevronRight,
   Search,
-  TrendingUp,
-  TrendingDown,
   Calendar as CalendarIcon,
   Download,
   MoreHorizontal,
@@ -243,15 +241,10 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
         {/* Total Scans */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start mb-4">
+          <div className="flex items-start mb-4">
             <div className="bg-blue-50 text-blue-600 p-2.5 rounded-xl group-hover:scale-110 transition-transform">
               <ClipboardList className="h-5 w-5" />
             </div>
-
-            <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
-              <TrendingUp className="h-3 w-3" />
-              +12.5%
-            </span>
           </div>
 
           <div>
@@ -267,15 +260,10 @@ export default function DashboardPage() {
 
         {/* Compliant % */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start mb-4">
+          <div className="flex items-start mb-4">
             <div className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl group-hover:scale-110 transition-transform">
               <Percent className="h-5 w-5" />
             </div>
-
-            <span className="flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
-              <TrendingUp className="h-3 w-3" />
-              +4.2%
-            </span>
           </div>
 
           <div>
@@ -306,14 +294,10 @@ export default function DashboardPage() {
 
         {/* Top Violation */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start mb-4">
+          <div className="flex items-start mb-4">
             <div className="bg-amber-50 text-amber-600 p-2.5 rounded-xl group-hover:scale-110 transition-transform">
               <AlertCircle className="h-5 w-5" />
             </div>
-
-            <span className="flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-full">
-              Attention
-            </span>
           </div>
 
           <div>
@@ -332,15 +316,10 @@ export default function DashboardPage() {
 
         {/* Violations This Week */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start mb-4">
+          <div className="flex items-start mb-4">
             <div className="bg-rose-50 text-rose-600 p-2.5 rounded-xl group-hover:scale-110 transition-transform">
               <Calendar className="h-5 w-5" />
             </div>
-
-            <span className="flex items-center gap-1 text-xs font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-full">
-              <TrendingDown className="h-3 w-3" />
-              -2.1%
-            </span>
           </div>
 
           <div>
