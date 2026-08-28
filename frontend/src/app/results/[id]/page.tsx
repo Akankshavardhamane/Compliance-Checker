@@ -74,8 +74,12 @@ export default async function ResultsPage({
   const isCompliant =
     result.overall_compliance_percent === 100;
 
+  const BACKEND_URL =
+    process.env.NEXT_PUBLIC_BACKEND_URL ??
+    "http://127.0.0.1:8000";
+
   const pdfUrl =
-    `http://127.0.0.1:8000/scan/${result.scan_id}/report.pdf`;
+    `${BACKEND_URL}/scan/${result.scan_id}/report.pdf`;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
