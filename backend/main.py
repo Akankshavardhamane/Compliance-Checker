@@ -8,12 +8,18 @@ from datetime import datetime, timedelta
 import shutil
 import uuid as uuid_lib
 import os
+import sys
 
 from db import engine, Base, get_db
 import models
 from schemas import ScanInput, ScanResult
 from rules import run_rule_engine
 from report_generator import generate_scan_pdf
+
+# ---- Wire in Person 1's OCR module (sibling folder, not inside backend/) ----
+OCR_MODULE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "OCR_module")
+sys.path.insert(0, os.path.abspath(OCR_MODULE_DIR))
+from pipeline import process_label  # noqa: E402
 
 Base.metadata.create_all(bind=engine)
 
@@ -84,6 +90,25 @@ def create_scan(scan_input: ScanInput, db: Session = Depends(get_db)):
     }
 
 
+# ---- Fallback mock, used ONLY if real OCR throws an error (e.g. API down, network issue) ----
+# This exists purely as a demo-safety net so a live demo doesn't hard-crash if OCR.space
+# has an outage or rate-limits you mid-demo. It is NOT used when real OCR succeeds.
+FALLBACK_MOCK_OCR = {
+    "mrp": {"detected": True, "value": "\u20b9199", "says_inclusive_of_taxes": True,
+            "text_height_pct": 3.1, "small_text_flag": False},
+    "net_quantity": {"detected": True, "value": "500g",
+                      "text_height_pct": 1.8, "small_text_flag": True},
+    "mfg_date": {"detected": True, "value": "07/2025",
+                 "text_height_pct": 2.0, "small_text_flag": False},
+    "consumer_care": {"detected": False, "value": None,
+                       "text_height_pct": None, "small_text_flag": None},
+    "manufacturer_address": {"detected": True, "value": "ABC Foods Pvt Ltd, Bengaluru 560001",
+                              "text_height_pct": 1.5, "small_text_flag": False},
+    "best_before_date": {"detected": False, "value": None, "applicable": True,
+                          "text_height_pct": None, "small_text_flag": None},
+}
+
+
 @app.post("/scan-with-image")
 async def create_scan_with_image(
     image: UploadFile = File(...),
@@ -98,26 +123,17 @@ async def create_scan_with_image(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
 
-    # TEMPORARY: mock OCR output until Person 1's real process_image() is wired in.
-    # Matches her finalized contract exactly (6 fields, nested detected/value/
-    # text_height_pct/small_text_flag; mrp has says_inclusive_of_taxes;
-    # best_before_date has applicable).
-    mock_ocr_output = {
-        "mrp": {"detected": True, "value": "\u20b9199", "says_inclusive_of_taxes": True,
-                "text_height_pct": 3.1, "small_text_flag": False},
-        "net_quantity": {"detected": True, "value": "500g",
-                          "text_height_pct": 1.8, "small_text_flag": True},
-        "mfg_date": {"detected": True, "value": "07/2025",
-                     "text_height_pct": 2.0, "small_text_flag": False},
-        "consumer_care": {"detected": False, "value": None,
-                           "text_height_pct": None, "small_text_flag": None},
-        "manufacturer_address": {"detected": True, "value": "ABC Foods Pvt Ltd, Bengaluru 560001",
-                                  "text_height_pct": 1.5, "small_text_flag": False},
-        "best_before_date": {"detected": False, "value": None, "applicable": True,
-                              "text_height_pct": None, "small_text_flag": None},
-    }
+    # ---- REAL OCR: calls Person 1's pipeline.process_label() ----
+    ocr_used = "real"
+    try:
+        extracted_fields = process_label(file_path)
+    except Exception as e:
+        # Demo-safety fallback — real OCR failed (API down, bad key, network, etc.)
+        print(f"[OCR WARNING] process_label failed, using fallback mock data: {e}")
+        extracted_fields = FALLBACK_MOCK_OCR
+        ocr_used = "fallback_mock"
 
-    scan_input = ScanInput(product_name=product_name, category=category, **mock_ocr_output)
+    scan_input = ScanInput(product_name=product_name, category=category, **extracted_fields)
     result = run_rule_engine(scan_input)
 
     new_scan = models.Scan(
@@ -145,6 +161,7 @@ async def create_scan_with_image(
         "field_results": result["field_results"],
         "violations": result["violations"],
         "readability_notes": result["readability_notes"],
+        "ocr_source": ocr_used,
     }
 
 

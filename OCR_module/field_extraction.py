@@ -14,7 +14,13 @@ def classify_fields(raw_text):
     }
 
     # --- MRP ---
-    mrp_match = re.search(r'(Retail Price|M\.?R\.?P)[\s\S]{0,15}?(\d+)\s*/-?', raw_text, re.IGNORECASE)
+    mrp_match = re.search(
+    r'(?:M\.?\s*R\.?\s*P\.?|Max(?:imum)?\s*Retail\s*Price)\s*'
+    r'[:\-]?\s*'
+    r'(?:Rs\.?|₹|Rupees)?\s*'
+    r'(\d{1,6}(?:[.,]\d{1,2})?)',
+    raw_text, re.IGNORECASE
+)
     if mrp_match:
         fields["mrp"]["detected"] = True
         fields["mrp"]["value"] = clean_value(mrp_match.group(2)) + "/-"
