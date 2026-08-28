@@ -1,16 +1,23 @@
-from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi import FastAPI, HTTPException, Depends, Query, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import Optional
+from datetime import datetime, timedelta
+import shutil
+import uuid as uuid_lib
+import os
+
 from db import engine, Base, get_db
 import models
 from schemas import ScanInput, ScanResult
 from rules import run_rule_engine
-from datetime import datetime, timedelta
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -21,6 +28,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 
 @app.get("/")
 def read_root():
@@ -61,6 +75,66 @@ def create_scan(scan_input: ScanInput, db: Session = Depends(get_db)):
     return {
         "scan_id": new_scan.scan_id,
         "product_name": new_scan.product_name,
+        "timestamp": new_scan.timestamp,
+        "overall_status": result["overall_status"],
+        "compliance_pct": result["compliance_pct"],
+        "fields_passed": result["fields_passed"],
+        "fields_total": result["fields_total"],
+        "field_results": result["field_results"],
+    }
+
+
+@app.post("/scan-with-image")
+async def create_scan_with_image(
+    image: UploadFile = File(...),
+    product_name: str = Form(None),
+    category: str = Form(None),
+    is_imported: bool = Form(False),
+    exemption: str = Form(None),
+    db: Session = Depends(get_db),
+):
+    file_extension = image.filename.split(".")[-1]
+    unique_filename = f"{uuid_lib.uuid4()}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(image.file, buffer)
+
+    # TEMPORARY: mock OCR output until Person 1's real process_image() is ready
+    # Once she's done, replace this block with: ocr_result = process_image(file_path)
+    mock_ocr_output = {
+        "mrp": {"value": "₹199 incl. of all taxes", "detected": True, "confidence": 0.9, "font_size_ok": True},
+        "net_qty": {"value": "500g", "detected": True, "confidence": 0.85, "font_size_ok": True},
+        "mfg_date": {"value": "07/2025", "detected": True, "confidence": 0.9, "font_size_ok": True},
+        "address": {"value": "ABC Foods Pvt Ltd, Bengaluru 560001", "detected": True, "confidence": 0.75, "font_size_ok": True},
+        "consumer_care": {"value": None, "detected": False, "confidence": 0.0, "font_size_ok": False},
+        "country_of_origin": {"value": None, "detected": False, "confidence": 0.0, "font_size_ok": False},
+        "is_imported": is_imported,
+        "product_name": product_name,
+        "category": category,
+        "exemption": exemption,
+    }
+
+    scan_input = ScanInput(**mock_ocr_output)
+    result = run_rule_engine(scan_input)
+
+    new_scan = models.Scan(
+        product_name=product_name,
+        category=category,
+        image_ref=f"uploads/{unique_filename}",
+        extracted_fields=mock_ocr_output,
+        rule_results=result["field_results"],
+        overall_status=result["overall_status"],
+        compliance_pct=result["compliance_pct"],
+    )
+    db.add(new_scan)
+    db.commit()
+    db.refresh(new_scan)
+
+    return {
+        "scan_id": new_scan.scan_id,
+        "product_name": new_scan.product_name,
+        "image_ref": new_scan.image_ref,
         "timestamp": new_scan.timestamp,
         "overall_status": result["overall_status"],
         "compliance_pct": result["compliance_pct"],
@@ -134,6 +208,7 @@ def list_scans(
         "scans": results,
     }
 
+
 @app.get("/dashboard/stats")
 def dashboard_stats(db: Session = Depends(get_db)):
     all_scans = db.query(models.Scan).all()
@@ -148,11 +223,9 @@ def dashboard_stats(db: Session = Depends(get_db)):
             "violations_this_week": 0,
         }
 
-    # Compliant % — average compliance_pct across all scans
     compliance_values = [s.compliance_pct for s in all_scans if s.compliance_pct is not None]
     compliant_pct = round(sum(compliance_values) / len(compliance_values), 1) if compliance_values else 0
 
-    # Top violation — most frequently failing field label across all scans
     field_fail_counts = {}
     for scan in all_scans:
         if not scan.rule_results:
@@ -166,7 +239,6 @@ def dashboard_stats(db: Session = Depends(get_db)):
     if field_fail_counts:
         top_violation = max(field_fail_counts, key=field_fail_counts.get)
 
-    # Violations this week — non-compliant scans in the last 7 days
     one_week_ago = datetime.utcnow() - timedelta(days=7)
     violations_this_week = sum(
         1 for s in all_scans
@@ -180,11 +252,11 @@ def dashboard_stats(db: Session = Depends(get_db)):
         "violations_this_week": violations_this_week,
     }
 
+
 @app.get("/analytics")
 def analytics(db: Session = Depends(get_db)):
     all_scans = db.query(models.Scan).all()
 
-    # ---- 1. Compliance over time (last 7 days) ----
     today = datetime.utcnow().date()
     daily_compliance = {}
     for i in range(6, -1, -1):
@@ -204,7 +276,6 @@ def analytics(db: Session = Depends(get_db)):
         avg = round(sum(values) / len(values), 1) if values else 0
         compliance_over_time.append({"date": day, "compliance_pct": avg})
 
-    # ---- 2. Violation breakdown by field ----
     field_fail_counts = {}
     for scan in all_scans:
         if not scan.rule_results:
@@ -219,7 +290,6 @@ def analytics(db: Session = Depends(get_db)):
         for label, count in sorted(field_fail_counts.items(), key=lambda x: -x[1])
     ]
 
-    # ---- 3. Scans by category ----
     category_counts = {}
     for scan in all_scans:
         cat = scan.category or "Uncategorized"
