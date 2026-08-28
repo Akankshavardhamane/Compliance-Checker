@@ -14,6 +14,21 @@ export interface ScanResult {
   fields: ComplianceField[];
 }
 
+export interface DashboardScan {
+  scan_id: string;
+  product_name: string;
+  scanned_at: string;
+  overall_compliance_percent: number;
+  overall_status: string;
+}
+
+export interface RecentScansResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  scans: DashboardScan[];
+}
+
 const BACKEND_URL = "http://127.0.0.1:8000";
 
 // --------------------------------------------------
@@ -53,7 +68,6 @@ export async function uploadLabel(file: File): Promise<ScanResult> {
     product_name: data.product_name ?? "Uploaded Product",
     scanned_at: data.timestamp ?? new Date().toISOString(),
     overall_compliance_percent: Number(data.compliance_pct ?? 0),
-
     fields: (data.field_results ?? []).map((field: any) => ({
       field_name: field.label ?? field.field ?? "Unknown Field",
       detected_value: field.detected_value ?? null,
@@ -69,7 +83,7 @@ export async function uploadLabel(file: File): Promise<ScanResult> {
 }
 
 // --------------------------------------------------
-// Get one real scan from backend
+// Get one real scan
 // --------------------------------------------------
 export async function getScanResult(
   scanId: string
@@ -104,7 +118,6 @@ export async function getScanResult(
     product_name: data.product_name ?? "Uploaded Product",
     scanned_at: data.timestamp ?? new Date().toISOString(),
     overall_compliance_percent: Number(data.compliance_pct ?? 0),
-
     fields: (data.field_results ?? []).map((field: any) => ({
       field_name: field.label ?? field.field ?? "Unknown Field",
       detected_value: field.detected_value ?? null,
@@ -120,26 +133,112 @@ export async function getScanResult(
 }
 
 // --------------------------------------------------
-// Dashboard - still mock for now
+// Dashboard stats -> REAL BACKEND
 // --------------------------------------------------
 export async function getDashboardStats() {
+  const response = await fetch(
+    `${BACKEND_URL}/dashboard/stats`,
+    {
+      method: "GET",
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      `Could not fetch dashboard stats (${response.status}): ${errorText}`
+    );
+  }
+
+  const data = await response.json();
+
   return {
-    totalScans: 0,
-    compliantPercent: 0,
-    mostCommonViolation: "None",
-    violationsThisWeek: 0,
+    totalScans: Number(data.total_scans ?? 0),
+    compliantPercent: Number(data.compliant_pct ?? 0),
+    mostCommonViolation: data.top_violation ?? "None",
+    violationsThisWeek: Number(
+      data.violations_this_week ?? 0
+    ),
   };
 }
 
 // --------------------------------------------------
-// Recent scans - still mock for now
+// Recent scans -> REAL BACKEND
+// Supports:
+// status, search, page and page_size
 // --------------------------------------------------
-export async function getRecentScans() {
-  return [];
+export async function getRecentScans({
+  status = "all",
+  search = "",
+  page = 1,
+  pageSize = 10,
+}: {
+  status?: "all" | "compliant" | "non-compliant" | "flagged";
+  search?: string;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<RecentScansResponse> {
+  const params = new URLSearchParams();
+
+  if (status !== "all") {
+    // Backend has no separate "flagged" status.
+    // For now, Flagged means non-compliant / violation found.
+    const backendStatus =
+      status === "flagged"
+        ? "non-compliant"
+        : status;
+
+    params.set("status", backendStatus);
+  }
+
+  if (search.trim()) {
+    params.set("search", search.trim());
+  }
+
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
+
+  const response = await fetch(
+    `${BACKEND_URL}/scans?${params.toString()}`,
+    {
+      method: "GET",
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      `Could not fetch scans (${response.status}): ${errorText}`
+    );
+  }
+
+  const data = await response.json();
+
+  return {
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? page),
+    page_size: Number(data.page_size ?? pageSize),
+    scans: (data.scans ?? []).map((scan: any) => ({
+      scan_id: scan.scan_id,
+      product_name:
+        scan.product_name ?? "Uploaded Product",
+      scanned_at:
+        scan.timestamp ?? new Date().toISOString(),
+      overall_compliance_percent: Number(
+        scan.compliance_pct ?? 0
+      ),
+      overall_status:
+        scan.overall_status ?? "non-compliant",
+    })),
+  };
 }
 
 // --------------------------------------------------
-// Analytics - still mock for now
+// Analytics -> still mock for now
 // --------------------------------------------------
 export async function getAnalyticsData() {
   return {
