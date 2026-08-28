@@ -3,42 +3,69 @@ from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 
-# ---- What Person 1's OCR module sends you ----
-class FieldData(BaseModel):
+
+# ---- OCR field shapes (Person 1's finalized contract) ----
+
+class OCRField(BaseModel):
+    detected: bool
     value: Optional[str] = None
-    detected: bool = False
-    confidence: Optional[float] = 0.0
-    font_size_ok: Optional[bool] = None
+    text_height_pct: Optional[float] = None
+    small_text_flag: Optional[bool] = None
+
+
+class MRPField(OCRField):
+    says_inclusive_of_taxes: bool = False
+
+
+class BestBeforeField(OCRField):
+    applicable: bool = True
+
+
+# ---- Request body for /scan, /test-rules, /scan-with-image ----
 
 class ScanInput(BaseModel):
-    mrp: FieldData
-    net_qty: FieldData
-    mfg_date: FieldData
-    address: FieldData
-    consumer_care: FieldData
-    country_of_origin: Optional[FieldData] = None
-    is_imported: bool = False
     product_name: Optional[str] = None
     category: Optional[str] = None
-    exemption: Optional[str] = None
 
-# ---- What you send back to frontend ----
+    mrp: MRPField
+    net_quantity: OCRField
+    mfg_date: OCRField
+    consumer_care: OCRField
+    manufacturer_address: OCRField
+    best_before_date: BestBeforeField
+
+
+# ---- Response models ----
+
 class FieldResult(BaseModel):
     field: str
     label: str
+    tier: str
+    rule: str
     status: str
     detected_value: Optional[str] = None
-    reason: str
+
+
+class ReadabilityNote(BaseModel):
+    field: str
+    label: str
+    text_height_pct: float
+    small_text_flag: bool
+
+
+class Violation(BaseModel):
+    rule: str
+    description: str
+
 
 class ScanResult(BaseModel):
     scan_id: UUID
-    product_name: Optional[str]
-    timestamp: datetime
+    product_name: Optional[str] = None
+    timestamp: Optional[datetime] = None
     overall_status: str
-    compliance_pct: float
+    compliance_pct: int
     fields_passed: int
     fields_total: int
     field_results: List[FieldResult]
-
-    class Config:
-        from_attributes = True
+    violations: Optional[List[Violation]] = None
+    readability_notes: Optional[List[ReadabilityNote]] = None
