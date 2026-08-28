@@ -55,6 +55,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "https://compliance-checker-three.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -280,7 +281,10 @@ async def create_scan_with_image(
         ocr_used = "fallback_mock"
 
     # Helpful debug output during integration testing
-    print("[OCR RESULT KEYS]:", list(extracted_fields.keys()))
+    print(
+        "[OCR RESULT KEYS]:",
+        list(extracted_fields.keys())
+    )
 
     # --------------------------------------------------
     # Build ScanInput
