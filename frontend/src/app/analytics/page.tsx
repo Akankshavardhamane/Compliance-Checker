@@ -14,14 +14,11 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
   Legend,
 } from "recharts";
 
 import {
   TrendingUp,
-  BarChart2,
   PieChart as PieChartIcon,
 } from "lucide-react";
 
@@ -34,8 +31,7 @@ const COLORS = [
 ];
 
 export default function AnalyticsPage() {
-  const [data, setData] =
-    useState<any>(null);
+  const [data, setData] = useState<any>(null);
 
   const [error, setError] =
     useState<string | null>(null);
@@ -94,8 +90,8 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Top two charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Compliance Over Time */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex justify-between items-center mb-6">
@@ -262,94 +258,6 @@ export default function AnalyticsPage() {
               </PieChart>
             </ResponsiveContainer>
           </div>
-        </div>
-      </div>
-
-      {/* Scans by Category */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">
-              Scans by Category
-            </h2>
-
-            <p className="text-sm text-slate-500">
-              Volume of scans across different product categories
-            </p>
-          </div>
-
-          <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600">
-            <BarChart2 className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer
-            width="100%"
-            height="100%"
-          >
-            <BarChart
-              data={data.categoryScans}
-              margin={{
-                top: 5,
-                right: 20,
-                bottom: 5,
-                left: 0,
-              }}
-              barSize={40}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#e2e8f0"
-                vertical={false}
-              />
-
-              <XAxis
-                dataKey="category"
-                axisLine={false}
-                tickLine={false}
-                tick={{
-                  fill: "#64748b",
-                  fontSize: 12,
-                }}
-                dy={10}
-              />
-
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{
-                  fill: "#64748b",
-                  fontSize: 12,
-                }}
-                dx={-10}
-              />
-
-              <RechartsTooltip
-                cursor={{
-                  fill: "#f8fafc",
-                }}
-                contentStyle={{
-                  borderRadius: "12px",
-                  border:
-                    "1px solid #e2e8f0",
-                  boxShadow:
-                    "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                }}
-              />
-
-              <Bar
-                dataKey="scans"
-                fill="#10b981"
-                radius={[
-                  4,
-                  4,
-                  0,
-                  0,
-                ]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
         </div>
       </div>
     </div>
