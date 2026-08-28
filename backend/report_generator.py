@@ -9,13 +9,6 @@ import io
 
 
 def generate_scan_pdf(scan, result):
-    """
-    scan: the DB row (models.Scan) — used for product_name, category,
-          timestamp, scan_id.
-    result: the dict returned by rules.run_rule_engine() — must contain
-          field_results, compliance_pct, fields_passed, fields_total,
-          overall_status, violations, readability_notes.
-    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -24,7 +17,6 @@ def generate_scan_pdf(scan, result):
     )
     styles = getSampleStyleSheet()
 
-    # ---- Styles ----
     header_label_style = ParagraphStyle(
         "HeaderLabel", parent=styles["Normal"], fontSize=9,
         textColor=colors.HexColor("#6b7280"), spaceAfter=2
@@ -85,7 +77,6 @@ def generate_scan_pdf(scan, result):
 
     elements = []
 
-    # ---- Header ----
     elements.append(Paragraph("LEGAL METROLOGY COMPLIANCE CHECKER", header_label_style))
     elements.append(Paragraph("Compliance Report", title_style))
 
@@ -101,22 +92,43 @@ def generate_scan_pdf(scan, result):
     elements.append(HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#e5e7eb"), spaceAfter=16))
 
     # ---- Overall status banner ----
-    is_compliant = result["overall_status"] == "compliant"
-    status_bg = colors.HexColor("#f0fdf4") if is_compliant else colors.HexColor("#fef2f2")
-    status_border = colors.HexColor("#16a34a") if is_compliant else colors.HexColor("#dc2626")
-    status_text_color = colors.HexColor("#166534") if is_compliant else colors.HexColor("#991b1b")
+    overall_status = result["overall_status"]
+    if overall_status == "compliant":
+        status_bg, status_border, status_text_color, status_label = (
+            colors.HexColor("#f0fdf4"), colors.HexColor("#16a34a"), colors.HexColor("#166534"), "COMPLIANT"
+        )
+    elif overall_status == "exempt":
+        status_bg, status_border, status_text_color, status_label = (
+            colors.HexColor("#eff6ff"), colors.HexColor("#2563eb"), colors.HexColor("#1e40af"), "EXEMPT"
+        )
+    else:
+        status_bg, status_border, status_text_color, status_label = (
+            colors.HexColor("#fef2f2"), colors.HexColor("#dc2626"), colors.HexColor("#991b1b"), "NON-COMPLIANT"
+        )
 
     status_style = ParagraphStyle(
         "StatusStyle", parent=styles["Normal"], fontSize=16,
         textColor=status_text_color, leading=20
     )
 
-    status_label = "COMPLIANT" if is_compliant else "NON-COMPLIANT"
-    status_para = Paragraph(
-        f"<b>{result['compliance_pct']}% Compliance &mdash; {status_label}</b>"
-        f"<br/><font size=9>{result['fields_passed']} of {result['fields_total']} mandatory fields passed</font>",
-        status_style
-    )
+    if overall_status == "exempt":
+        exemption_labels = {
+            "free_sample": "Free Sample",
+            "bulk_institutional": "Bulk / Institutional Packaging",
+            "export_only": "Export-Only Goods",
+        }
+        reason_text = exemption_labels.get(result.get("exemption_reason"), result.get("exemption_reason") or "")
+        status_para = Paragraph(
+            f"<b>EXEMPT \u2014 {reason_text}</b>"
+            f"<br/><font size=9>This product category is exempt from standard declaration checks.</font>",
+            status_style
+        )
+    else:
+        status_para = Paragraph(
+            f"<b>{result['compliance_pct']}% Compliance &mdash; {status_label}</b>"
+            f"<br/><font size=9>{result['fields_passed']} of {result['fields_total']} mandatory fields passed</font>",
+            status_style
+        )
 
     status_table = Table([[status_para]], colWidths=[17*cm])
     status_table.setStyle(TableStyle([
@@ -129,53 +141,45 @@ def generate_scan_pdf(scan, result):
     ]))
     elements.append(status_table)
 
-    # ---- Field-by-field table ----
-    elements.append(Paragraph("Field-by-Field Analysis", section_heading_style))
+    # ---- Field-by-field table (skipped entirely for exempt scans) ----
+    if overall_status != "exempt":
+        elements.append(Paragraph("Field-by-Field Analysis", section_heading_style))
 
-    table_data = [[
-        Paragraph("Field", header_cell_style),
-        Paragraph("Tier", header_cell_style),
-        Paragraph("Status", header_cell_style),
-        Paragraph("Detected Value", header_cell_style),
-    ]]
+        table_data = [[
+            Paragraph("Field", header_cell_style),
+            Paragraph("Tier", header_cell_style),
+            Paragraph("Status", header_cell_style),
+            Paragraph("Detected Value", header_cell_style),
+        ]]
 
-    style_by_status = {
-        "pass": cell_pass_style,
-        "fail": cell_fail_style,
-        "not_applicable": cell_na_style,
-    }
-    display_by_status = {
-        "pass": "PASS",
-        "fail": "FAIL",
-        "not_applicable": "N/A",
-    }
+        style_by_status = {"pass": cell_pass_style, "fail": cell_fail_style, "not_applicable": cell_na_style}
+        display_by_status = {"pass": "PASS", "fail": "FAIL", "not_applicable": "N/A"}
 
-    for field_result in result["field_results"]:
-        status = field_result.get("status", "")
-        style_cell = style_by_status.get(status, cell_value_style)
-        status_display = display_by_status.get(status, status.upper())
+        for field_result in result["field_results"]:
+            status = field_result.get("status", "")
+            style_cell = style_by_status.get(status, cell_value_style)
+            status_display = display_by_status.get(status, status.upper())
 
-        table_data.append([
-            Paragraph(field_result.get("label", field_result.get("field", "")), cell_field_style),
-            Paragraph(field_result.get("tier", "").capitalize(), cell_value_style),
-            Paragraph(status_display, style_cell),
-            Paragraph(field_result.get("detected_value") or "Not detected", cell_value_style),
-        ])
+            table_data.append([
+                Paragraph(field_result.get("label", field_result.get("field", "")), cell_field_style),
+                Paragraph(field_result.get("tier", "").capitalize(), cell_value_style),
+                Paragraph(status_display, style_cell),
+                Paragraph(field_result.get("detected_value") or "Not detected", cell_value_style),
+            ])
 
-    table = Table(table_data, colWidths=[4.5*cm, 2.8*cm, 2.2*cm, 7.5*cm], repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
-    ]))
-    elements.append(table)
+        table = Table(table_data, colWidths=[4.5*cm, 2.8*cm, 2.2*cm, 7.5*cm], repeatRows=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
+        ]))
+        elements.append(table)
 
-    # ---- Readability notes (informational only — does not affect score) ----
     if result.get("readability_notes"):
         elements.append(Paragraph("Font Readability (Informational)", section_heading_style))
         elements.append(Paragraph(
@@ -211,7 +215,6 @@ def generate_scan_pdf(scan, result):
         ]))
         elements.append(read_table)
 
-    # ---- Violation summary / offence log ----
     if result.get("violations"):
         elements.append(Paragraph("Violation Summary", section_heading_style))
         for i, v in enumerate(result["violations"], start=1):
@@ -222,7 +225,6 @@ def generate_scan_pdf(scan, result):
             ))
         elements.append(Spacer(1, 8))
 
-    # ---- Footer ----
     elements.append(Spacer(1, 16))
     elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#e5e7eb"), spaceAfter=8))
     elements.append(Paragraph(
