@@ -2,20 +2,75 @@
 
 import { useState, useEffect } from "react";
 import { getAnalyticsData } from "@/lib/api";
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, BarChart, Bar, Legend
-} from 'recharts';
-import { TrendingUp, TrendingDown, Download, BarChart2, PieChart as PieChartIcon } from "lucide-react";
 
-const COLORS = ['#10b981', '#f43f5e', '#f59e0b', '#3b82f6', '#8b5cf6'];
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  Legend,
+} from "recharts";
+
+import {
+  TrendingUp,
+  Download,
+  BarChart2,
+  PieChart as PieChartIcon,
+} from "lucide-react";
+
+const COLORS = [
+  "#10b981",
+  "#f43f5e",
+  "#f59e0b",
+  "#3b82f6",
+  "#8b5cf6",
+];
 
 export default function AnalyticsPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] =
+    useState<any>(null);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   useEffect(() => {
-    getAnalyticsData().then(setData);
+    async function loadAnalytics() {
+      try {
+        setError(null);
+
+        const result =
+          await getAnalyticsData();
+
+        setData(result);
+      } catch (err) {
+        console.error(err);
+
+        setError(
+          "Could not load analytics data."
+        );
+      }
+    }
+
+    loadAnalytics();
   }, []);
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-5 py-4 rounded-xl">
+          {error}
+        </div>
+      </div>
+    );
+  }
 
   if (!data) {
     return (
@@ -27,104 +82,283 @@ export default function AnalyticsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 bg-[#F8FAFC] min-h-screen">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-1">Analytics Overview</h1>
-          <p className="text-slate-500 font-medium">Compliance trends and violation insights.</p>
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-1">
+            Analytics Overview
+          </h1>
+
+          <p className="text-slate-500 font-medium">
+            Compliance trends and violation insights.
+          </p>
         </div>
+
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg shadow-sm hover:bg-slate-50 hover:shadow-md transition-all">
+          <button
+            type="button"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg shadow-sm hover:bg-slate-50 hover:shadow-md transition-all"
+          >
             <Download className="h-4 w-4 text-slate-500" />
             Export Report
           </button>
         </div>
       </div>
 
+      {/* Top two charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Line Chart */}
+        {/* Compliance Over Time */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Compliance Over Time</h2>
-              <p className="text-sm text-slate-500">Daily compliance rate for the last 7 days</p>
+              <h2 className="text-lg font-bold text-slate-900">
+                Compliance Over Time
+              </h2>
+
+              <p className="text-sm text-slate-500">
+                Daily compliance rate for the last 7 days
+              </p>
             </div>
+
             <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
               <TrendingUp className="h-5 w-5" />
             </div>
           </div>
+
           <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data.complianceOverTime} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+            >
+              <LineChart
+                data={
+                  data.complianceOverTime
+                }
+                margin={{
+                  top: 5,
+                  right: 20,
+                  bottom: 5,
+                  left: 0,
+                }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#e2e8f0"
+                  vertical={false}
                 />
-                <Line type="monotone" dataKey="rate" stroke="#3b82f6" strokeWidth={3} dot={{r: 4, strokeWidth: 2}} activeDot={{r: 6}} />
+
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fill: "#64748b",
+                    fontSize: 12,
+                  }}
+                  dy={10}
+                />
+
+                <YAxis
+                  domain={[0, 100]}
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{
+                    fill: "#64748b",
+                    fontSize: 12,
+                  }}
+                  dx={-10}
+                />
+
+                <RechartsTooltip
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border:
+                      "1px solid #e2e8f0",
+                    boxShadow:
+                      "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                  }}
+                  formatter={(value: any) => [
+                    `${value}%`,
+                    "Compliance",
+                  ]}
+                />
+
+                <Line
+                  type="monotone"
+                  dataKey="rate"
+                  stroke="#3b82f6"
+                  strokeWidth={3}
+                  dot={{
+                    r: 4,
+                    strokeWidth: 2,
+                  }}
+                  activeDot={{
+                    r: 6,
+                  }}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Pie Chart */}
+        {/* Breakdown of Violations */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Breakdown of Violations</h2>
-              <p className="text-sm text-slate-500">Most common missing or incorrect fields</p>
+              <h2 className="text-lg font-bold text-slate-900">
+                Breakdown of Violations
+              </h2>
+
+              <p className="text-sm text-slate-500">
+                Most common missing or incorrect fields
+              </p>
             </div>
+
             <div className="bg-amber-50 p-2 rounded-lg text-amber-600">
               <PieChartIcon className="h-5 w-5" />
             </div>
           </div>
+
           <div className="h-[300px] w-full flex items-center">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+            >
               <PieChart>
                 <Pie
-                  data={data.violationsBreakdown}
+                  data={
+                    data.violationsBreakdown
+                  }
                   cx="50%"
                   cy="50%"
                   innerRadius={80}
                   outerRadius={110}
                   paddingAngle={5}
                   dataKey="value"
+                  nameKey="name"
                 >
-                  {data.violationsBreakdown.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
+                  {data.violationsBreakdown.map(
+                    (
+                      entry: any,
+                      index: number
+                    ) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={
+                          COLORS[
+                            index %
+                              COLORS.length
+                          ]
+                        }
+                      />
+                    )
+                  )}
                 </Pie>
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+
+                <RechartsTooltip
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border:
+                      "1px solid #e2e8f0",
+                    boxShadow:
+                      "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                  }}
                 />
-                <Legend layout="vertical" verticalAlign="middle" align="right" />
+
+                <Legend
+                  layout="vertical"
+                  verticalAlign="middle"
+                  align="right"
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
+      {/* Scans by Category */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Scans by Category</h2>
-            <p className="text-sm text-slate-500">Volume of scans across different product categories</p>
+            <h2 className="text-lg font-bold text-slate-900">
+              Scans by Category
+            </h2>
+
+            <p className="text-sm text-slate-500">
+              Volume of scans across different product categories
+            </p>
           </div>
+
           <div className="bg-emerald-50 p-2 rounded-lg text-emerald-600">
             <BarChart2 className="h-5 w-5" />
           </div>
         </div>
+
         <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data.categoryScans} margin={{ top: 5, right: 20, bottom: 5, left: 0 }} barSize={40}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-              <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
-              <RechartsTooltip 
-                cursor={{fill: '#f8fafc'}}
-                contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+          >
+            <BarChart
+              data={data.categoryScans}
+              margin={{
+                top: 5,
+                right: 20,
+                bottom: 5,
+                left: 0,
+              }}
+              barSize={40}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#e2e8f0"
+                vertical={false}
               />
-              <Bar dataKey="scans" fill="#10b981" radius={[4, 4, 0, 0]} />
+
+              <XAxis
+                dataKey="category"
+                axisLine={false}
+                tickLine={false}
+                tick={{
+                  fill: "#64748b",
+                  fontSize: 12,
+                }}
+                dy={10}
+              />
+
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{
+                  fill: "#64748b",
+                  fontSize: 12,
+                }}
+                dx={-10}
+              />
+
+              <RechartsTooltip
+                cursor={{
+                  fill: "#f8fafc",
+                }}
+                contentStyle={{
+                  borderRadius: "12px",
+                  border:
+                    "1px solid #e2e8f0",
+                  boxShadow:
+                    "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                }}
+              />
+
+              <Bar
+                dataKey="scans"
+                fill="#10b981"
+                radius={[
+                  4,
+                  4,
+                  0,
+                  0,
+                ]}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
