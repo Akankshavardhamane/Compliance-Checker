@@ -25,7 +25,15 @@ type FilterStatus =
   | "non-compliant";
 
 function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
+  // Backend timestamps are stored in UTC but returned
+  // without timezone information.
+  // Explicitly treat timezone-less timestamps as UTC.
+  const normalizedDateString =
+    /(?:Z|[+-]\d{2}:?\d{2})$/i.test(dateString)
+      ? dateString
+      : dateString.replace(" ", "T") + "Z";
+
+  const date = new Date(normalizedDateString);
   const now = new Date();
 
   const diffMs = now.getTime() - date.getTime();
