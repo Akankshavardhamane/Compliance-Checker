@@ -280,11 +280,23 @@ async def create_scan_with_image(
         extracted_fields = FALLBACK_MOCK_OCR
         ocr_used = "fallback_mock"
 
-    # Helpful debug output during integration testing
+    # --------------------------------------------------
+    # DEBUG: Inspect OCR output after normalization
+    # --------------------------------------------------
+
+    print("\n========== OCR EXTRACTED DATA ==========")
+    print(extracted_fields)
+    print("========================================\n")
+
     print(
         "[OCR RESULT KEYS]:",
         list(extracted_fields.keys())
     )
+
+    print("\n========== NET QTY DEBUG ==========")
+    print("net_qty:", extracted_fields.get("net_qty"))
+    print("net_quantity:", extracted_fields.get("net_quantity"))
+    print("===================================\n")
 
     # --------------------------------------------------
     # Build ScanInput
@@ -297,10 +309,30 @@ async def create_scan_with_image(
     )
 
     # --------------------------------------------------
+    # DEBUG: Inspect data after ScanInput conversion
+    # --------------------------------------------------
+
+    print("\n========== SCAN INPUT DEBUG ==========")
+    print("scan_input.net_qty:", scan_input.net_qty)
+    print("scan_input.dict():", scan_input.dict())
+    print("======================================\n")
+
+    # --------------------------------------------------
     # Run rule engine
     # --------------------------------------------------
 
     result = run_rule_engine(scan_input)
+
+    # --------------------------------------------------
+    # DEBUG: Inspect rule engine result
+    # --------------------------------------------------
+
+    print("\n========== RULE ENGINE DEBUG ==========")
+
+    for field in result["field_results"]:
+        print(field)
+
+    print("=======================================\n")
 
     # --------------------------------------------------
     # Save scan

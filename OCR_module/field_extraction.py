@@ -6,6 +6,7 @@ def clean_value(text):
 
 
 def classify_fields(raw_text):
+
     fields = {
         "mrp": {
             "detected": False,
@@ -38,22 +39,9 @@ def classify_fields(raw_text):
     # ==========================================================
     # MRP
     # ==========================================================
-    #
-    # Handles examples such as:
-    #   MRP RS
-    #   40.00
-    #
-    #   MRP: ₹40
-    #
-    #   Max, Retail Price:
-    #   60.00
-    #
-    #   Max Retail Price: Rs 60
-    #
-    #   Maximum Retail Price ₹60
-    #
+
     mrp_match = re.search(
-        r"(?:"
+        r"(?:" 
         r"M\s*\.?\s*R\s*\.?\s*P"
         r"|"
         r"Max(?:imum)?\s*[,.:;\-]?\s*Retail\s*[,.:;\-]?\s*Price"
@@ -69,11 +57,15 @@ def classify_fields(raw_text):
     )
 
     if mrp_match:
+
         fields["mrp"]["detected"] = True
+
         fields["mrp"]["value"] = (
             clean_value(mrp_match.group(1)) + "/-"
         )
+
     else:
+
         # Currency fallback
         mrp_match = re.search(
             r"(?:Rs\.?|₹|Rupees)"
@@ -84,12 +76,17 @@ def classify_fields(raw_text):
         )
 
         if mrp_match:
+
             fields["mrp"]["detected"] = True
+
             fields["mrp"]["value"] = clean_value(
                 mrp_match.group(0)
             )
 
+    # Check whether MRP mentions inclusive of taxes
+
     if fields["mrp"]["detected"]:
+
         fields["mrp"]["says_inclusive_of_taxes"] = bool(
             re.search(
                 r"(?:incl?|inclusive|included)"
@@ -99,119 +96,192 @@ def classify_fields(raw_text):
             )
         )
 
-    # ==========================================================
+        # ==========================================================
     # NET QUANTITY
     # ==========================================================
-    #
-    # Handles:
-    #   NET WT
-    #   100GMS
-    #
-    #   Net Quantity: 150 gms
-    #
-    #   NET WEIGHT
-    #   150 g
-    #
-    quantity_value_pattern = (
-        r"(\d+(?:\.\d+)?)\s*"
-        r"(gms?|grams?|kg|kgs|ml|litres?|l)\b"
+
+    # Split OCR text into individual cleaned lines
+    lines = [
+        line.strip()
+        for line in raw_text.splitlines()
+        if line.strip()
+    ]
+
+    net_labels = (
+        "net quantity",
+        "net qty",
+        "net wt",
+        "net weight",
+        "net feight",
     )
 
-    qty_match = re.search(
-        r"(?:Net\s+Quantity|Net\s+Wt|Net\s+Weight|Net\s+Feight)"
-        r"\s*[:\-]?\s*"
-        + quantity_value_pattern,
-        raw_text,
+    quantity_pattern = re.compile(
+        r"^\s*(\d+(?:\.\d+)?)\s*"
+        r"(g|gm|gms|gram|grams|kg|kgs|ml|"
+        r"l|ltr|litre|litres|liter|liters)\s*$",
         re.IGNORECASE,
     )
 
-    if qty_match:
-        fields["net_quantity"]["detected"] = True
-        fields["net_quantity"]["value"] = clean_value(
-            qty_match.group(0)
-        )
+    # First look for "Net Quantity" and then check
+    # the same line and the next few OCR lines.
+    for index, line in enumerate(lines):
+
+        normalized_line = re.sub(
+            r"\s+",
+            " ",
+            line.lower()
+        ).strip()
+
+        if any(label in normalized_line for label in net_labels):
+
+            # Check the current line + next 3 lines
+            candidate_lines = lines[index:index + 4]
+
+            for candidate in candidate_lines:
+
+                qty_match = quantity_pattern.search(
+                    candidate
+                )
+
+                if qty_match:
+
+                    number = qty_match.group(1)
+                    unit = qty_match.group(2)
+
+                    fields["net_quantity"]["detected"] = True
+
+                    fields["net_quantity"]["value"] = (
+                        f"{number} {unit}"
+                    )
+
+                    break
+
+        if fields["net_quantity"]["detected"]:
+            break
+
+    # ----------------------------------------------------------
+    # Fallback: look for any standalone quantity
+    # ----------------------------------------------------------
 
     if not fields["net_quantity"]["detected"]:
-        qty_match = re.search(
-            r"(?:Net\s+Quantity|Net\s+Wt|Net\s+Weight|Net\s+Feight)"
-            r"[\s\S]{0,30}?"
-            + quantity_value_pattern,
-            raw_text,
-            re.IGNORECASE,
-        )
 
-        if qty_match:
-            fields["net_quantity"]["detected"] = True
-            fields["net_quantity"]["value"] = clean_value(
-                qty_match.group(0)
-            )
+        for line in lines:
 
+            qty_match = quantity_pattern.search(line)
+
+            if qty_match:
+
+                number = qty_match.group(1)
+                unit = qty_match.group(2)
+
+                fields["net_quantity"]["detected"] = True
+
+                fields["net_quantity"]["value"] = (
+                    f"{number} {unit}"
+                )
+
+                break
+    # ----------------------------------------------------------
     # Generic quantity fallback
+    # ----------------------------------------------------------
+
     if not fields["net_quantity"]["detected"]:
-        generic_qty = re.search(
-            r"\b\d+(?:\.\d+)?\s*"
-            r"(?:gms?|grams?|kg|kgs|ml|litres?|l)\b",
+
+        generic_qty_matches = re.findall(
+            r"\b"
+            r"(\d+(?:\.\d+)?)"
+            r"\s*"
+            r"(gms?|grams?|kgs?|kg|ml|litres?|liters?|ltr|l)"
+            r"\b",
             raw_text,
             re.IGNORECASE,
         )
 
-        if generic_qty:
+        if generic_qty_matches:
+
+            number, unit = generic_qty_matches[0]
+
             fields["net_quantity"]["detected"] = True
-            fields["net_quantity"]["value"] = clean_value(
-                generic_qty.group(0)
+
+            fields["net_quantity"]["value"] = (
+                f"{number} {unit}"
             )
 
     # ==========================================================
     # MANUFACTURING / PACKING DATE
     # ==========================================================
+
     mfg_match = re.search(
-        r"(D\.?O\.?P|Date of (Mfg|Pack)|.ATE OF (MFG|PACK)|"
-        r"D\.?e?\.?o?f?\s*Manufacture|Month of Mfg|Packed On|Mfg|"
-        r"Manufactured|Packed|PKD)"
+        r"(D\.?O\.?P"
+        r"|Date of (Mfg|Pack)"
+        r"|DATE OF (MFG|PACK)"
+        r"|D\.?e?\.?o?f?\s*Manufacture"
+        r"|Month of Mfg"
+        r"|Packed On"
+        r"|Mfg"
+        r"|Manufactured"
+        r"|Packed"
+        r"|PKD)"
         r"[\s\S]{0,40}?"
-        r"(\d{1,2}\s*[\.\:\-\s]\s*[A-Za-z]{3,9}"
-        r"[\.\:\-\s]?\s*\d{2,4})",
+        r"("
+        r"\d{1,2}\s*[\.\:\-\s]\s*[A-Za-z]{3,9}"
+        r"[\.\:\-\s]?\s*\d{2,4}"
+        r")",
         raw_text,
         re.IGNORECASE,
     )
 
     if mfg_match:
+
         fields["mfg_date"]["detected"] = True
+
         fields["mfg_date"]["value"] = clean_value(
             mfg_match.group(mfg_match.lastindex)
         )
+
     else:
+
         mfg_fallback2 = re.search(
             r"Month of Mfg\.?[\s\S]{0,20}?"
-            r"([A-Za-z]{3,9})[\s\S]{0,20}?(\d{4})",
+            r"([A-Za-z]{3,9})"
+            r"[\s\S]{0,20}?"
+            r"(\d{4})",
             raw_text,
             re.IGNORECASE,
         )
 
         if mfg_fallback2:
+
             fields["mfg_date"]["detected"] = True
+
             fields["mfg_date"]["value"] = clean_value(
                 mfg_fallback2.group(1)
                 + " "
                 + mfg_fallback2.group(2)
             )
+
         else:
+
             mfg_fallback3 = re.search(
-                r"Packed On\s*[:\-]?\s*"
+                r"Packed On"
+                r"\s*[:\-]?\s*"
                 r"(\d{1,2}\s*/\s*\d{4})",
                 raw_text,
                 re.IGNORECASE,
             )
 
             if mfg_fallback3:
+
                 fields["mfg_date"]["detected"] = True
+
                 fields["mfg_date"]["value"] = clean_value(
-                    mfg_fallback3.group()
+                    mfg_fallback3.group(1)
                 )
 
     # ==========================================================
     # BEST BEFORE
     # ==========================================================
+
     bb_match = re.search(
         r"Best\s*Before"
         r"\s*[:\-]?\s*"
@@ -230,7 +300,9 @@ def classify_fields(raw_text):
     )
 
     if bb_match:
+
         fields["best_before_date"]["detected"] = True
+
         fields["best_before_date"]["value"] = clean_value(
             bb_match.group()
         )
@@ -238,12 +310,16 @@ def classify_fields(raw_text):
     # ==========================================================
     # CONSUMER CARE
     # ==========================================================
+
     consumer_label_pattern = (
-        r"(?:customer\s+care|consumer\s+care|"
-        r"toll[\s\-]*free|"
-        r"helpline|"
-        r"care\s+no|"
-        r"customer\s+service)"
+        r"(?:"
+        r"customer\s+care"
+        r"|consumer\s+care"
+        r"|toll[\s\-]*free"
+        r"|helpline"
+        r"|care\s+no"
+        r"|customer\s+service"
+        r")"
     )
 
     phone_pattern = (
@@ -258,7 +334,6 @@ def classify_fields(raw_text):
 
     email_pattern = r"[\w.\-+]+@[\w.\-]+\.[A-Za-z]{2,}"
 
-    # Labelled customer-care phone
     care_match = re.search(
         consumer_label_pattern
         + r"[\s:.\-#]*"
@@ -271,8 +346,8 @@ def classify_fields(raw_text):
         re.IGNORECASE,
     )
 
-    # Labelled customer-care email
     if not care_match:
+
         care_match = re.search(
             consumer_label_pattern
             + r"[\s:.\-#]*"
@@ -283,8 +358,8 @@ def classify_fields(raw_text):
             re.IGNORECASE,
         )
 
-    # Explicit Mobile / Phone / Contact
     if not care_match:
+
         care_match = re.search(
             r"(?:Mobile|Phone|Contact)"
             r"[\s:.\-#]*"
@@ -296,7 +371,9 @@ def classify_fields(raw_text):
         )
 
     if care_match:
+
         fields["consumer_care"]["detected"] = True
+
         fields["consumer_care"]["value"] = clean_value(
             care_match.group()
         )
@@ -304,35 +381,71 @@ def classify_fields(raw_text):
     # ==========================================================
     # MANUFACTURER ADDRESS
     # ==========================================================
+
     addr_match = re.search(
-        r"(marketed by|manufactured by|manufacturers?\s*&?\s*"
-        r"distributed by|packed by|pkd by|"
-        r"mfd,?\s*pkd\s*&?\s*mktd by|mfd by|mktd by)"
-        r"[\s:]*([^\n]+(\n[^\n]+){0,2})",
+        r"("
+        r"marketed by"
+        r"|manufactured by"
+        r"|manufacturers?\s*&?\s*distributed by"
+        r"|packed by"
+        r"|pkd by"
+        r"|mfd,?\s*pkd\s*&?\s*mktd by"
+        r"|mfd by"
+        r"|mktd by"
+        r")"
+        r"[\s:]*"
+        r"([^\n]+(\n[^\n]+){0,2})",
         raw_text,
         re.IGNORECASE,
     )
 
     if addr_match:
+
         fields["manufacturer_address"]["detected"] = True
+
         fields["manufacturer_address"]["value"] = clean_value(
             addr_match.group()
         )
+
     else:
+
         addr_fallback = re.search(
-            r"([A-Z][A-Za-z\s]{2,30}"
-            r"(Industries|Bakery|Foods|Enterprises|Traders|"
-            r"Sweets|& Co\.?|Pvt\.?\s*Ltd\.?))"
+            r"("
+            r"[A-Z][A-Za-z\s]{2,30}"
+            r"("
+            r"Industries"
+            r"|Bakery"
+            r"|Foods"
+            r"|Enterprises"
+            r"|Traders"
+            r"|Sweets"
+            r"|& Co\.?"
+            r"|Pvt\.?\s*Ltd\.?"
+            r")"
+            r")"
             r"[\s\S]{0,60}?"
-            r"([A-Z][a-z]+,?\s*"
-            r"(Mangalore|Bangalore|Mysore|Mumbai|Delhi|Chennai|"
-            r"Pune|Bengaluru|[A-Z][a-z]+))",
+            r"("
+            r"[A-Z][a-z]+,?\s*"
+            r"("
+            r"Mangalore"
+            r"|Bangalore"
+            r"|Mysore"
+            r"|Mumbai"
+            r"|Delhi"
+            r"|Chennai"
+            r"|Pune"
+            r"|Bengaluru"
+            r"|[A-Z][a-z]+"
+            r")"
+            r")",
             raw_text,
             re.IGNORECASE,
         )
 
         if addr_fallback:
+
             fields["manufacturer_address"]["detected"] = True
+
             fields["manufacturer_address"]["value"] = clean_value(
                 addr_fallback.group()
             )

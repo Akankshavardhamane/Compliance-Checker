@@ -16,6 +16,9 @@ def process_label(image_path):
     print("========== END RAW OCR TEXT ==========\n")
 
     fields = classify_fields(raw_text)
+    print("\n========== AFTER CLASSIFY_FIELDS ==========")
+    print(json.dumps(fields, indent=2))
+    print("===========================================\n")
 
     line_heights = get_line_heights(parsed, image_path)
     fields = get_field_font_heights(fields, line_heights)
